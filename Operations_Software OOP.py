@@ -488,7 +488,9 @@ port  = [[sg.Text('Toggle ADC24'),sg.Button(button_text ='Toggle',size=(15,1),ke
         [sg.Text('ILD1420 COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM2-',enable_events=True)],
         [sg.Button(button_text ='Connect',size=(15,1),key='-SENS_CON-'),  LEDIndicator('-SENS_STATUS-'), sg.Button(button_text ='Test',size=(15,1),key='-DIS_TEST-')],
         [sg.Text('PSU COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM3-',enable_events=True)],
-        [sg.Button(button_text ='Connect',size=(15,1),key='-PSU_CON-'),  LEDIndicator('-PSU_STATUS-')]]
+        [sg.Button(button_text ='Connect',size=(15,1),key='-PSU_CON-'),  LEDIndicator('-PSU_STATUS-')],
+        [sg.Text('PSU2 COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM4-',enable_events=True)],
+        [sg.Button(button_text ='Connect',size=(15,1),key='-PSU2_CON-'),  LEDIndicator('-PS2_STATUS-')]]
 
 
 col1 = [[sg.Text('Voltage Selection'), sg.Combo(voltages,default_value= 1500,size=(15,22), key='-VOLTS-',enable_events=True)],
@@ -615,11 +617,23 @@ if __name__=='__main__':
             fig_tool.SetLED('-PSU_STATUS-', 'orange')
             try:
                 psu_port = ports[values['-COM3-']]
-                DC.Vset(0, psu_port)
+                DC.SetOutputState(psu_port, state='Off')
                 print(psu_port,DC.identify(psu_port))
                 fig_tool.SetLED('-PSU_STATUS-', 'green')
             except Exception as Arguments:
                 fig_tool.SetLED('-PSU_STATUS-', 'red')
+                err = Arguments
+            fig_tool.LogDisp('-LOG-', err)
+
+        if event=='-PSU_CON2-':
+            fig_tool.SetLED('-PSU2_STATUS-','orange')
+            try:
+                psu2_port = ports[values['-COM4-']]
+                DC.SetOutputState(psu2_port, state='Off')
+                print(psu2_port,DC.identify(psu2_port))
+                fig_tool.SetLED('-PSU2_STATUS-', 'green')
+            except Exception as Arguments:
+                fig_tool.SetLED('-PSU2_STATUS-', 'red')
                 err = Arguments
             fig_tool.LogDisp('-LOG-', err)
         

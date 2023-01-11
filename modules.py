@@ -16,7 +16,8 @@ from picosdk.picohrdl import picohrdl as hrdl
 from picosdk.functions import assert_pico2000_ok
 import pyvisa
 from datetime import datetime
-from instruments.micro_epsilon import MEDAQLib
+
+from RazorBill.instruments.micro_epsilon import MEDAQLib
 import serial
 
 global event

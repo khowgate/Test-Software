@@ -13,7 +13,7 @@ import pyvisa
 import threading
 import parse
 import time
-from measurement import _rootlogger
+from RazorBill.measurement import _rootlogger
 
 _logger = _rootlogger.getChild('instruments')
 
