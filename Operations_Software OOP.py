@@ -398,6 +398,12 @@ def run(volts,camPreTrig,camPin,ignPin,voltInPin):
     pulseTime = 5e-3
 
     start = time.time()
+    psuErr = 0
+
+    errDump = open('runEventDump.txt', 'w')
+    now = datetime.now()
+    date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
+    errDump.write('\nTest Date/time'+date_time)
     
     while True:
         
@@ -438,18 +444,23 @@ def run(volts,camPreTrig,camPin,ignPin,voltInPin):
             
         if event=='-RUN-' or ignition >= max_ignitions:
             print('stop event')
+            errDump.write('\nStop event, user or ignition max exit\nIgnition No.'+str(ignition)+'Ignition max'+str(max_ignitions)+'\n')
             fig_tool.delete_figure_agg(fig_agg3)
             controlQue.put('stop')
             break
         if not reportQue.empty():
             print('stop event')
             statment = reportQue.get()
-            if 'TERMINAL' in statment:
+
+            psuErr += 1
+            errDump.write(statment+'\n')
+            if psuErr > 3:
                 fig_tool.LogDisp('-LOG-',statment)
                 break
             fig_tool.LogDisp('-LOG-',statment)
         if not controlQue.empty():
             print('stop event')
+            errDump.write('Stop event, control que break\n')
             if 'stop' in controlQue.get():
                 break
 
@@ -490,7 +501,7 @@ port  = [[sg.Text('Toggle ADC24'),sg.Button(button_text ='Toggle',size=(15,1),ke
         [sg.Text('PSU COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM3-',enable_events=True)],
         [sg.Button(button_text ='Connect',size=(15,1),key='-PSU_CON-'),  LEDIndicator('-PSU_STATUS-')],
         [sg.Text('PSU2 COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM4-',enable_events=True)],
-        [sg.Button(button_text ='Connect',size=(15,1),key='-PSU2_CON-'),  LEDIndicator('-PS2_STATUS-')]]
+        [sg.Button(button_text ='Connect',size=(15,1),key='-PSU2_CON-'),  LEDIndicator('-PSU2_STATUS-')]]
 
 
 col1 = [[sg.Text('Voltage Selection'), sg.Combo(voltages,default_value= 1500,size=(15,22), key='-VOLTS-',enable_events=True)],
@@ -544,6 +555,7 @@ fig_tool = figure_tools(window)
 fig_tool.SetLED('-ARDUINO_STATUS-', 'red')
 fig_tool.SetLED('-SENS_STATUS-', 'red')
 fig_tool.SetLED('-PSU_STATUS-', 'red')
+fig_tool.SetLED('-PSU2_STATUS-', 'red')
 
 #Graph 1
 canvas_elem1 = window['-GRAPH1-']
@@ -673,6 +685,7 @@ if __name__=='__main__':
                 
         if event=='-RUN-':
             if run_log:
+                err = ''
                 event = ''
                 run_log = False
                 fig_tool.delete_figure_agg(fig_agg1)    
@@ -683,7 +696,14 @@ if __name__=='__main__':
                 max_ignitions = float(values['-SHOOT-'])   
                 ignition_frequency = float(values['-FREQ-'])
                 camera_delay = float(values['-CAMDELAY-'])*1e-3
-                psu_operation = pool.apply_async(PSU_run, (psu_port, Inital_voltage_limit,Inital_current_limit,Overcurrent_protection, controlQue, reportQue)) 
+                try:
+                    psu_operation = pool.apply_async(PSU_run, (psu_port, Inital_voltage_limit,Inital_current_limit,Overcurrent_protection, controlQue, reportQue))
+                except:
+                    err += 'PSU1 not connected'
+                try:
+                    psu2_operation = pool.apply_async(PSU_run, (psu2_port, 12,Inital_current_limit,Overcurrent_protection, controlQue, reportQue))
+                except:
+                    err += 'PSU2 not connected'
                 async_result4 = pool.apply_async(run, (values['-VOLTS-'],camera_delay, camPin, ignPin, voltInPin))
             else:
                 run_log = True
@@ -714,7 +734,7 @@ if __name__=='__main__':
             except:
                 pass
             try:
-                uno.close()
+                board.exit()
             except:
                 pass
             window.Close()
