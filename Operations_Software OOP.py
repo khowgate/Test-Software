@@ -12,7 +12,7 @@ import pandas as pd
 from scipy.signal import find_peaks
 from scipy.fft import fft, fftfreq
 from scipy.optimize import curve_fit
-from modules import db_tools, figure_tools, ADC24, DC_PSU, ILD
+import omnipy
 from datetime import datetime
 from multiprocessing import Process, Queue
 from pyfirmata import Arduino, util
