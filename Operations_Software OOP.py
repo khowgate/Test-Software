@@ -20,18 +20,18 @@ from pyfirmata.util import Iterator
 
 controlQue = Queue()
 reportQue = Queue()
-DC = DC_PSU()
+DC = omnipy.DC_PSU()
 
 plt.ion()
 
 err= {'err':0,'txt':''}
 
+dbKeys = open('secrets.txt', 'r')
+Lines = dbKeys.readlines()
 
 
-token = 'L2L-aCeEGP7R1g5D2nVTh3j4AEkOC_YXVlGuE-rsEScuLb3oRBNMsuLRZZvPRH6VZsaE99iJWjMb5DZ-tl5h2g=='
-url = "http://192.168.4.25:8086"
 
-dbSync = db_tools(url, token, 'Log_data')
+dbSync = omnipy.db_tools(Lines[1].strip(), Lines[0].strip(), 'Log_data')
 
 def LEDIndicator(key=None, radius=30):
     return sg.Graph(canvas_size=(radius, radius),
@@ -549,7 +549,7 @@ layout = [
 
 window = sg.Window('Test', layout,finalize=True)
 
-fig_tool = figure_tools(window)
+fig_tool = omnipy.figure_tools(window)
 
 
 fig_tool.SetLED('-ARDUINO_STATUS-', 'red')
@@ -615,7 +615,7 @@ if __name__=='__main__':
         if event=='-SENS_CON-':  
             fig_tool.SetLED('-SENS_STATUS-', 'orange')
             try:
-                disp_sensor = ILD(values['-COM2-'])
+                disp_sensor = omnipy.ILD(values['-COM2-'])
                 data, t = disp_sensor.poll()
                 fig_tool.SetLED('-SENS_STATUS-', 'green')
             except Exception as Arguments:
@@ -670,7 +670,7 @@ if __name__=='__main__':
             if run_vlog:
                 print('run')          
                 try:
-                    unit = ADC24()   
+                    unit = omnipy.ADC24()   
                     async_result1 = pool.apply_async(VoltLog, (bx, fig_agg2))
                     err = ''
                 except:
