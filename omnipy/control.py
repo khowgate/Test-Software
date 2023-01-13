@@ -1,11 +1,4 @@
 
-"""
-Created on Tue Dec  6 14:13:18 2022
-
-@author: KristianHowgate
-"""
-
-
 
 import ctypes
 from picosdk.picohrdl import picohrdl as hrdl

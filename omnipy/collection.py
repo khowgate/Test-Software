@@ -2,9 +2,6 @@ import time
 from datetime import datetime
 
 
-
-
-
 def PSU_run(dbSync,DC,instrument ,Inital_voltage_limit, Inital_current_limit, Overcurrent_protection, controlQue, reportQue):
     err = 0
     DC.SetOutputState(instrument, state='Off')
