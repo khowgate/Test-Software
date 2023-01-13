@@ -1,26 +1,21 @@
 import PySimpleGUI as sg
-
 import time
 from datetime import datetime
 from multiprocessing.pool import ThreadPool
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
-import numpy as np
 from PIL import Image, ImageTk
 import io
-import pandas as pd
-from scipy.signal import find_peaks
-from scipy.fft import fft, fftfreq
-from scipy.optimize import curve_fit
-import omnipy
+from omnipy import control, collection, analysis, utils
 from datetime import datetime
 from multiprocessing import Process, Queue
-from pyfirmata import Arduino, util
-from pyfirmata.util import Iterator
+from pyfirmata import Arduino
 
 controlQue = Queue()
 reportQue = Queue()
-DC = omnipy.DC_PSU()
+DC = control.DC_PSU()
+collect = collection()
+ana = analysis()
 
 plt.ion()
 
@@ -31,166 +26,13 @@ Lines = dbKeys.readlines()
 
 
 
-dbSync = omnipy.db_tools(Lines[1].strip(), Lines[0].strip(), 'Log_data')
+dbSync = utils.db_tools(Lines[1].strip(), Lines[0].strip(), 'Log_data')
 
 def LEDIndicator(key=None, radius=30):
     return sg.Graph(canvas_size=(radius, radius),
              graph_bottom_left=(-radius, -radius),
              graph_top_right=(radius, radius),
              pad=(0, 0), key=key)
-
-def PSU_run(instrument ,Inital_voltage_limit, Inital_current_limit, Overcurrent_protection, controlQue, reportQue):
-     err = 0
-     DC.SetOutputState(instrument, state='Off')
-     
-     # print(instrument, Inital_voltage_limit,Inital_current_limit)        
-     DC.Inital_voltage_limit = Inital_voltage_limit
-     DC.Inital_current_limit = Inital_current_limit
-     DC.Vset(Inital_voltage_limit, instrument)
-     DC.Iset(Inital_current_limit, instrument)
-     DC.SetOverCurrentProtection(instrument, Overcurrent_protection)
-     DC.SetOutputState(instrument, state='On')
-     
-     start_time2 = time.time()
-     
-     print('psu control loop confirm')
-     while True:
-         if controlQue.empty():
-             if time.time() - start_time2 > 2:
-                 V = DC.Vget(instrument)
-                 I = DC.Iget(instrument)
-                 dbSync.db_write(instrument,'V',V)
-                 dbSync.db_write(instrument,'I',I)
-                 start_time2 = time.time()
-                 print(V,I, err)
-
-             if DC.GetOutputState(instrument) == 'Off':
-                 # print('OCP Trip')
-                 err += 1
-                 reportQue.put(instrument+' FAULT NO.'+str(err))
-                 time.sleep(1)
-                    
-             if err >2:
-                 DC.SetOutputState(instrument, state='Off')
-                 return reportQue.put(instrument+' TERMINAL FAULT')
-             
-     
-         else:
-            command = controlQue.get()
-            if 'new_V' in command:
-                 DC.Vset(command['new_V'], instrument)
-            elif 'new_I' in command:
-                 DC.Vset(command['new_I'], instrument)
-            elif 'stop' in command:
-                DC.SetOutputState(instrument, state='Off')
-                print('PSU log stopping')
-                break
-            else:
-                 print(controlQue.get())
-        
-     return True
-
-def VoltLog(ax, fig_agg2):
-
-    data = [[],[]]
-    t = []
-     
-    channels= [1,3]
-    ranges = ['HRDL_78_MV','HRDL_78_MV']
-    conversion_times = ['HRDL_100MS','HRDL_100MS']
-    
-    unit.setup_channels(channels,ranges, conversion_times)    #Setup Channel
-
-    while True:
- 
-        i = 0
-        raw = unit.getV()
-        x = 0
-        for val in raw:
-            data[x].append(val)
-            x += 1
-        now = datetime.now()
-        t_ = now.strftime("%H:%M:%S:%f")
-        t.append(t_)
-        
-        ax.cla()
-        if len(t) > 199:
-            t = t[1:201]
-            x = 0
-            while x < len(channels):
-                data[x] = data[x][1:201]
-                x += 1
-        for dat in data:
-            ax.plot(t,dat,  color='purple')
-        ax.grid()
-        
-        pos = 0
-        if i > 19:
-            for dat in data:  
-                try:
-                    dbSync.db_write('Temp', 'Sens '+str(pos), dat[-1])
-                except:
-                    print('server connection Issue')
-                pos +=1
-            i=0
-            
-        #print(data[0])
-        #print(t)
-        if len(t) <25:
-            ax.set(xticks=[t[0],t[-1]])
-            #print(t[0],t[-1])
-        elif len(t) <175:
-            middleIndex = int(len(t)/2)
-            ax.set(xticks=[t[0],t[middleIndex],t[-1]])
-            #print(t[0],t[middleIndex],t[-1])
-        else :
-        #len(t) <198:
-            middleIndex = int(len(t)/2)
-            bottomIndex = int(len(t[0:middleIndex])/2)
-            ax.set(xticks=[t[0],t[bottomIndex],t[middleIndex],t[bottomIndex+middleIndex],t[-1]])
-                              
-        fig_agg2.draw()
-        
-        if event=='-VLOG_EN-':
-            print('Vlog Stop')
-            unit.close()
-            break
-        if not controlQue.empty():
-            if 'stop' in controlQue.get():
-                
-                break
-
-
-def PollDis(ax, fig_agg1):
-    print('Poll Start')
-    t = []
-    data = []
-    while True:
-        data_raw, t_raw = disp_sensor.poll()
-        data.append(data_raw), t.append(t_raw)
-        if len(t) > 100:
-            t = t[1:102]
-            data =data[1:102]
-        ax.cla()                    # clear the subplot
-        ax.grid()                   # draw the grid
-        ax.plot(t,data,  color='purple')
-        
-        if len(t) <20:
-            ax.set(xticks=[t[0],t[-1]])
-            #print(t[0],t[-1])
-        elif len(t) <80:
-            middleIndex = int(len(t)/2)
-            ax.set(xticks=[t[0],t[middleIndex],t[-1]])
-        else :
-            middleIndex = int(len(t)/2)
-            bottomIndex = int(len(t[0:middleIndex])/2)
-            ax.set(xticks=[t[0],t[bottomIndex],t[middleIndex],t[bottomIndex+middleIndex],t[-1]])
-        fig_agg1.draw()
-        time.sleep(0.05)
-        if event=='-DIS_TEST-':
-            print('Poll Stop')
-            break
-
 
 def get_img_data(f, maxsize=(800, 600), first=False):
     """Generate image data using PIL
@@ -204,172 +46,6 @@ def get_img_data(f, maxsize=(800, 600), first=False):
         return bio.getvalue()
     return ImageTk.PhotoImage(img)
 
-def Ibit(mp,L,dx): 
-    g = 9.8066
-    dx = dx*1e-6
-    mp = mp*1e-3
-    L = L*1e-2
-    Y = np.sqrt(1-(np.power((dx/L),2)))
-    return mp*np.sqrt(2*g*L*(1-Y))
-
-class fitClass:
-    def __init__(self):
-        pass    
-    def funcSin(self,t,A,phi): # remove lamb if dumping factor is not being considered
-        w = 2*np.pi*self.f
-        #Dump =A*np.exp(-lamb*t)
-        #return Dump*np.sin(w*t+phi)
-        return A*np.sin(w*t+phi)
-
-def fitting_before (peak_number_after_discharge,df,frqY):
-    #BEFORE DISCHARGE
-    #TIMESTAP DEFINITION
-    timeStart1=-3
-    timeStop1=-0.2
-
-    timeStart2=0.2
-    timeStop2=3
-    
-#CURVE FIT
-    df_aux1=df.drop(df[df['Time [s]'] > timeStop1].index)
-    df_aux1.drop(df_aux1[df_aux1['Time [s]'] < timeStart1].index, inplace=True)
-
-    y_1=df_aux1['Distance'].to_numpy()
-    x_1=df_aux1['Time [s]'].to_numpy()
-    
-    
-    x_fit_1=np.linspace(timeStart1,timeStop1,num=1000)
-     
-    df_aux2=df.drop(df[df['Time [s]'] > timeStop2].index)
-    df_aux2.drop(df_aux2[df_aux2['Time [s]'] < timeStart2].index, inplace=True)
-    
-    y_2=df_aux2['Distance'].to_numpy()
-    x_2=df_aux2['Time [s]'].to_numpy()
-
-    x_fit_2=np.linspace(timeStart2,timeStop2,num=1000)
-    
-
-    inst = fitClass()
-    inst.f = frqY
-    coeffs1, coeffs_cov1 = curve_fit(inst.funcSin, x_1, 1000*y_1)
-    print('f=%0.2f Hz, A=%0.2f um, phase=%0.2f rad'%(frqY,coeffs1[0],coeffs1[1]))
-
-    coeffs2, coeffs_cov2 = curve_fit(inst.funcSin, x_2, 1000*y_2)
-    print('f=%0.2f Hz, A=%0.2f um, phase=%0.2f rad'%(frqY,coeffs2[0],coeffs2[1]))
-    #,bounds=(0,[600.,360.,0.5]))
-    x_fit_1=np.linspace(timeStart1,timeStop1,num=10000)
-    x_fit_2=np.linspace(timeStart2,timeStop2,num=10000)
-    
-    
-    A=coeffs1[0]
-    alpha=coeffs1[1]
-    M=coeffs2[0]
-    phi=coeffs2[1]
-    
-    c1=A*np.cos(alpha)
-    s1=A*np.sin(alpha)
-    c2=M*np.cos(phi)
-    s2=M*np.sin(phi)
-
-    B=0
-    B=np.sqrt((c1-c2)**2+(s1-s2)**2)
-    
-    return x_fit_1, x_fit_2, coeffs1, coeffs2, B, inst, timeStart1, timeStop2
-
-def Raw_Data_Collection(step,freqLaser, ax, cx):
-
-    print('process start')
-    time.sleep(step/2)
-    
-    raw_data = pd.DataFrame()
-    raw_data['1'] = disp_sensor.block_data()
-    #print(raw_data)
-
-    dt=1/freqLaser
-
-    df = pd.DataFrame()
-
-    df["Distance"] = raw_data[(len(raw_data['1'])-step*freqLaser):len(raw_data['1']-1)]
-    tfinal=dt*step*freqLaser
-    df["Time [s]"] = np.arange(0,tfinal,dt)
-    offset=df.mean()
-    df= (df-offset)
-    
-    
-    #plot results
-    print('plot reached')
-    ax.cla()                    # clear the subplot
-    ax.grid()
-    ax.plot(df["Time [s]"],df["Distance"],'r-',lw='1',label='raw data')
-    print(df["Time [s]"],df["Distance"])
-    #plt.xlim(4,5.5)
-    ax.legend(loc='best')
-
-    amplitude=(df['Distance'].max()-df['Distance'].min())/2 #millimeter
-    print('Max Amplitude = %0.2f mm'%amplitude)
-
-    y=df['Distance'].to_numpy()
-    x=df['Time [s]'].to_numpy()
-
-    # Number of sample points
-    N = len(x)
-    # sample spacing
-    T = dt
-    yf = fft(y)
-    xf = fftfreq(N, T)[:N//2]
-
-    peakY = np.max(2.0/N * np.abs(yf[0:N//2])) # Find max peak
-    locY = np.argmax(2.0/N * np.abs(yf[0:N//2])) # Find its location
-    frqY = xf[locY] # Get the actual frequency value
-    T=1/frqY #Get period
-    
-    
-    
-    cx.cla()                    # clear the subplot
-    cx.grid()
-    cx.semilogx(xf, 2.0/N * np.abs(yf[0:N//2]),label='Peak=%0.2f Hz'%frqY)
-    cx.legend(loc='best')
-    peaks, _ = find_peaks(df['Distance'], height=0, distance=1000)
-    np.diff(peaks)
-    #plt.plot(df['Time [s]'],df['Distance'], "-")
-    #plt.plot(df['Time [s]'][peaks],df['Distance'][peaks], "x")
-
-    shots = [None]*peaks.size
-    matrix = {}
-    h     = 0
-    x     = 0
-    count = 0 
-
-    (x_fit_1, x_fit_2, coeffs1, coeffs2, B, inst,timeStart1, timeStop2)= fitting_before(x+1,df,frqY)
-    
-    mp= 5e-6
-    L = 0.1
-    
-    bit = Ibit(mp,L,B)
-    
-    #Update display
-    #Log values
-    
-    
-    return B, bit
-
-
-def closest(lst, K):
-      
-     lst = np.asarray(lst)
-     idx = (np.abs(lst - K)).argmin()
-     return idx
-
-
-def arduino_setup(board):
-    it = util.Iterator(board)
-    it.start()
-    cam = board.get_pin('d:12:o')
-    ign = board.get_pin('d:13:o')
-    volt = board.get_pin('a:0:i')
-    # volt.enable_reporting()
-
-    return cam, ign, volt
 
 def run(volts,camPreTrig,camPin,ignPin,voltInPin):
     
@@ -428,7 +104,7 @@ def run(volts,camPreTrig,camPin,ignPin,voltInPin):
 
                 ignition += 1
                 try:
-                    b, bit = Raw_Data_Collection(step, freqLaser, ax, cx) # Displasment Sesor Procseeing
+                    b, bit = ana.Raw_Data_Collection(step, freqLaser, ax, cx) # Displasment Sesor Procseeing
                     fig_agg3.draw()
                 except:
                     bit = 0
@@ -549,7 +225,7 @@ layout = [
 
 window = sg.Window('Test', layout,finalize=True)
 
-fig_tool = omnipy.figure_tools(window)
+fig_tool = utils.figure_tools(window)
 
 
 fig_tool.SetLED('-ARDUINO_STATUS-', 'red')
@@ -604,7 +280,7 @@ if __name__=='__main__':
             fig_tool.SetLED('-ARDUINO_STATUS-', 'orange')
             try:
                 board = Arduino(values['-COM-'])
-                camPin, ignPin, voltInPin = arduino_setup(board)
+                camPin, ignPin, voltInPin = control.arduinoBuiltIn(board)
                 fig_tool.SetLED('-ARDUINO_STATUS-', 'green')
             except Exception as Arguments:
                 err = Arguments.args
@@ -615,7 +291,7 @@ if __name__=='__main__':
         if event=='-SENS_CON-':  
             fig_tool.SetLED('-SENS_STATUS-', 'orange')
             try:
-                disp_sensor = omnipy.ILD(values['-COM2-'])
+                disp_sensor = control.ILD(values['-COM2-'])
                 data, t = disp_sensor.poll()
                 fig_tool.SetLED('-SENS_STATUS-', 'green')
             except Exception as Arguments:
@@ -654,7 +330,7 @@ if __name__=='__main__':
                 if run_dis:
                     try:
                         print('Testing')
-                        async_result2 = pool.apply_async(PollDis,(ax, fig_agg1))
+                        async_result2 = pool.apply_async(collection.PollDis,(ax, fig_agg1))
                         event=''
                         run_dis = False
                         err = ''
@@ -670,8 +346,8 @@ if __name__=='__main__':
             if run_vlog:
                 print('run')          
                 try:
-                    unit = omnipy.ADC24()   
-                    async_result1 = pool.apply_async(VoltLog, (bx, fig_agg2))
+                    unit = control.ADC24()   
+                    async_result1 = pool.apply_async(collection.VoltLog, (bx, fig_agg2))
                     err = ''
                 except:
                     err = 'ADC24 Connection Failed'
@@ -697,11 +373,11 @@ if __name__=='__main__':
                 ignition_frequency = float(values['-FREQ-'])
                 camera_delay = float(values['-CAMDELAY-'])*1e-3
                 try:
-                    psu_operation = pool.apply_async(PSU_run, (psu_port, Inital_voltage_limit,Inital_current_limit,Overcurrent_protection, controlQue, reportQue))
+                    psu_operation = pool.apply_async(collection.PSU_run, (psu_port, Inital_voltage_limit,Inital_current_limit,Overcurrent_protection, controlQue, reportQue))
                 except:
                     err += 'PSU1 not connected'
                 try:
-                    psu2_operation = pool.apply_async(PSU_run, (psu2_port, 12,Inital_current_limit,Overcurrent_protection, controlQue, reportQue))
+                    psu2_operation = pool.apply_async(collection.PSU_run, (psu2_port, 12,Inital_current_limit,Overcurrent_protection, controlQue, reportQue))
                 except:
                     err += 'PSU2 not connected'
                 async_result4 = pool.apply_async(run, (values['-VOLTS-'],camera_delay, camPin, ignPin, voltInPin))

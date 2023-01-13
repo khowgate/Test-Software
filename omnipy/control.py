@@ -5,12 +5,8 @@ Created on Tue Dec  6 14:13:18 2022
 @author: KristianHowgate
 """
 
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
-import influxdb_client, os, time
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
+
+
 import ctypes
 from picosdk.picohrdl import picohrdl as hrdl
 from picosdk.functions import assert_pico2000_ok
@@ -19,70 +15,11 @@ from datetime import datetime
 
 from RazorBill.instruments.micro_epsilon import MEDAQLib
 import serial
+from pyfirmata import Arduino, util
+from pyfirmata.util import Iterator
 
 global event
 
-
-class figure_tools:
-    def __init__(self, window):
-        self.window=window
-    
-    def draw_figure(self, canvas, figure, loc=(0, 0)):
-        plt.close()
-        figure_canvas_agg = FigureCanvasTkAgg(figure, canvas)
-        figure_canvas_agg.draw()
-        figure_canvas_agg.get_tk_widget().pack(side='top', fill='both', expand=1)
-        return figure_canvas_agg
-    
-    def delete_figure_agg(self, figure_agg):
-        figure_agg.get_tk_widget().forget()
-        plt.close('all')
-    
-    def SetLED(self, key, color):
-        graph = self.window[key]
-        graph.erase()
-        graph.draw_circle((0, 0), 12, fill_color=color, line_color=color)
-        #print('Colour Change')
-
-        
-    def LogDisp(self, key, txt):
-        disp = self.window[key]
-        print(txt)
-        if key == '-LOG-':
-            now = datetime.now()
-            current_time = now.strftime("%H:%M:%S")
-            err = txt
-            try:
-                disp.update(value=('['+current_time+']  '+str(err['txt'])))
-            except:
-                disp.update(value=('['+current_time+']  '+repr(err)))
-        else:
-            disp.update(value = txt)
-
-
-class db_tools:
-   
-    def __init__(self, url, token, test_ID):
-        org = "Omnidea Ltd."
-        client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
-        self.write_api = client.write_api(write_options=SYNCHRONOUS)
-        self.test = test_ID
-
-    def db_write(self, point, field, data):
-        # print(data)
-        try:
-            point = (
-              Point(point)
-              .field(field, float(data))
-            )
-        except:
-            point = (
-              Point(point)
-              .field(field, float(data[0]))
-            )
-        # print('point created')
-        self.write_api.write(bucket=self.test, org="Omnidea Ltd.", record=point)
-        # print('write Complte')
         
 class ADC24:
     
@@ -278,6 +215,15 @@ class Arduino:
     def close (self):
         self.arduino.close()
         
-        
+def arduinoBuiltIn(board):
+    it = util.Iterator(board)
+    it.start()
+    cam = board.get_pin('d:12:o')
+    ign = board.get_pin('d:13:o')
+    volt = board.get_pin('a:0:i')
+    # volt.enable_reporting()
+
+    return cam, ign, volt
+
         
         
