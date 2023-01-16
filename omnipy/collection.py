@@ -53,7 +53,7 @@ def PSU_run(dbSync,DC,instrument ,Inital_voltage_limit, Inital_current_limit, Ov
         
     return True
 
-def VoltLog(dbSync,unit, ax, fig_agg2, controlQue, event):
+def VoltLog(dbSync,unit, ax, fig_agg2, controlQue):
 
     data = [[],[]]
     t = []
@@ -114,17 +114,14 @@ def VoltLog(dbSync,unit, ax, fig_agg2, controlQue, event):
                             
         fig_agg2.draw()
         
-        if event=='-VLOG_EN-':
-            print('Vlog Stop')
-            unit.close()
-            break
         if not controlQue.empty():
             if 'stop' in controlQue.get():
-                
+                print('Vlog Stop')
+                unit.close()
                 break
 
 
-def PollDis(disp_sensor, ax, fig_agg1, event):
+def PollDis(disp_sensor, ax, fig_agg1, controlQue):
     print('Poll Start')
     t = []
     data = []
@@ -150,6 +147,7 @@ def PollDis(disp_sensor, ax, fig_agg1, event):
             ax.set(xticks=[t[0],t[bottomIndex],t[middleIndex],t[bottomIndex+middleIndex],t[-1]])
         fig_agg1.draw()
         time.sleep(0.05)
-        if event=='-DIS_TEST-':
-            print('Poll Stop')
-            break
+        if not controlQue.empty() :
+            if 'stop' in controlQue.get():
+                print('Poll Stop')
+                break

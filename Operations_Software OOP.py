@@ -14,8 +14,6 @@ from pyfirmata import Arduino
 controlQue = Queue()
 reportQue = Queue()
 DC = control.DC_PSU()
-collect = collection()
-ana = analysis()
 
 plt.ion()
 
@@ -104,7 +102,7 @@ def run(volts,camPreTrig,camPin,ignPin,voltInPin):
 
                 ignition += 1
                 try:
-                    b, bit = ana.Raw_Data_Collection(step, freqLaser, ax, cx) # Displasment Sesor Procseeing
+                    b, bit = analysis.Raw_Data_Collection(disp_sensor,step,freqLaser, ax, cx) # Displasment Sesor Procseeing
                     fig_agg3.draw()
                 except:
                     bit = 0
@@ -168,8 +166,9 @@ freqLaser=2000
 
 image_elem = sg.Image(data=get_img_data('2.4.0002.JPG', first=True))
 
-
-port  = [[sg.Text('Toggle ADC24'),sg.Button(button_text ='Toggle',size=(15,1),key='-VLOG_EN-')],
+modes = [1500]
+col1 = sg.Col([
+        [sg.Frame('',[[sg.Text('Toggle ADC24'),sg.Button(button_text ='Toggle',size=(15,1),key='-VLOG_EN-')],
         [sg.Text('Arduino COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM-',enable_events=True)],
         [sg.Button(button_text ='Connect',size=(15,1),key='-ARDUINO_CON-'),  LEDIndicator('-ARDUINO_STATUS-')],
         [sg.Text('ILD1420 COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM2-',enable_events=True)],
@@ -177,51 +176,50 @@ port  = [[sg.Text('Toggle ADC24'),sg.Button(button_text ='Toggle',size=(15,1),ke
         [sg.Text('PSU COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM3-',enable_events=True)],
         [sg.Button(button_text ='Connect',size=(15,1),key='-PSU_CON-'),  LEDIndicator('-PSU_STATUS-')],
         [sg.Text('PSU2 COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM4-',enable_events=True)],
-        [sg.Button(button_text ='Connect',size=(15,1),key='-PSU2_CON-'),  LEDIndicator('-PSU2_STATUS-')]]
-
-
-col1 = [[sg.Text('Voltage Selection'), sg.Combo(voltages,default_value= 1500,size=(15,22), key='-VOLTS-',enable_events=True)],
-         [sg.Text('Target Shot No.'), sg.Spin(potential_shots,size=(15,22), key='-SHOOT-',enable_events=True)],
-         [sg.Text('Ignition Frequency'), sg.Spin(potential_freq,size=(15,22), key='-FREQ-',enable_events=True)],
-         [sg.Text('Camera Pre-Trigger (ms)'), sg.Input(default_text='50',size=(15,22), key='-CAMDELAY-',enable_events=True)],
-         [sg.Text('Power Supply Overide Control'),sg.Button(button_text ='Test',size=(15,1),key='-PSUSET-')],
-         [sg.Text('Fixed Voltage Output (V)'), sg.Input(default_text='12',size=(15,22), key='-PSUV-',enable_events=True)],
-         [sg.Text('Fixed Current Limit (mA)'), sg.Input(default_text='50',size=(15,22), key='-PSUA-',enable_events=True)],
-         [sg.Text('Data Logging Selection')],
-         [sg.Text('Thermal',size=(10,1)),sg.Radio('OFF',1, size=(10,2), enable_events=True, key='-THERM-'),sg.Radio('ON',1, size=(10,2), enable_events=True, key='-THERM-')],
-         [sg.Text('Power', size=(10,1)),sg.Radio('OFF',2, size=(10,2), enable_events=True, key='-PWR-'),sg.Radio('ON',2, size=(10,2), enable_events=True, key='-PWR-')],
-         [sg.Button(button_text ='Run',size=(15,1),key='-RUN-')],
-         ]
+        [sg.Button(button_text ='Connect',size=(15,1),key='-PSU2_CON-'),  LEDIndicator('-PSU2_STATUS-')]])],
+        [sg.Text('Operation Mode'), sg.Combo(['V-Fix','V-Sweep'],size=(15,22), key='-COM5-')],
+        [sg.Text('Camera Pre-Trigger (ms)'), sg.Input(default_text='50',size=(15,22), key='-CAMDELAY-',enable_events=True)],
+         
+        [sg.TabGroup([[sg.Tab('V-Fix',[[sg.Text('Voltage Selection'), sg.Combo(voltages,default_value= 1500,size=(15,22), key='-VOLTS-',enable_events=True)],
+                                    [sg.Text('Target Shot No.'), sg.Spin(potential_shots,size=(15,22), key='-SHOOT-',enable_events=True)],
+                                    [sg.Text('Fixed Voltage Output (V)'), sg.Input(default_text='12',size=(15,22), key='-PSUV-',enable_events=True)],
+                                    [sg.Text('Fixed Current Limit (mA)'), sg.Input(default_text='50',size=(15,22), key='-PSUA-',enable_events=True)],
+                                    [sg.Text('Power Supply Overide Control'),sg.Button(button_text ='Test',size=(15,1),key='-PSUSET-')]])],
+                    [sg.Tab('V-Sweep',[[sg.Text('Sweep Start Voltage'), sg.Combo(voltages,size=(15,22), key='-SWP_STRT-',enable_events=True)],
+                                    [sg.Text('Sweep Stop Voltage'), sg.Combo(voltages,size=(15,22), key='-SWP_STOP-',enable_events=True)],
+                                    [sg.Text('Voltage between Steps'), sg.Combo([50,100,200],size=(15,22), key='-SWP_STEP-',enable_events=True)],
+                                    [sg.Text('No. Shots/step'), sg.Input(default_text='50',size=(15,22), key='-SWP_SHOT-',enable_events=True)]])],
+                    [sg.Tab('Ignitor',[[sg.Text('Fixed Voltage Output (V)'), sg.Input(default_text='12',size=(15,22), key='-PSU2V-',enable_events=True)],
+                                    [sg.Text('Fixed Current Limit (mA)'), sg.Input(default_text='50',size=(15,22), key='-PSU2A-',enable_events=True)],
+                                    [sg.Text('Power Supply Overide Control'),sg.Button(button_text ='Test',size=(15,1),key='-PSU2SET-')],
+                                    [sg.Text('Ignition Freq (not supported)'), sg.Spin(potential_freq,size=(15,22), key='-FREQ-',enable_events=True)]])]])],
+         
+         
+        [sg.Button(button_text ='Run',size=(15,1),key='-RUN-')]])
 
 col2 = [[sg.Text('Last Image')],
         [image_elem]
     ]
 
 
-col3 = [[sg.Frame('',[[sg.Text('IBIT')],[sg.StatusBar('',k='-BIT-',s=(5,2))]]),
+col3 = sg.Frame('',[[sg.Frame('',[[sg.Text('IBIT')],[sg.StatusBar('',k='-BIT-',s=(5,2))]]),
          sg.Frame('',[[sg.Text('Last Voltage')],[sg.StatusBar('',k='-LASTV-',s=(5,2))]]),
          sg.Frame('',[[sg.Text('Shot No.')],[sg.StatusBar('',k='-SHOTN-',s=(5,2))]]),
          sg.Frame('',[[sg.Text('Sensor Heath')],[sg.StatusBar('',k='-SENSORH-',s=(5,2))]]) ],
         [sg.Canvas(size=(400,200),key='-GRAPH1-')],[sg.Canvas(size=(400,200),key='-GRAPH3-',visible=False)],
-        [sg.Canvas(size=(400,200),key='-GRAPH2-')]]
+        [sg.Canvas(size=(400,200),key='-GRAPH2-')]])
         
 
-col4 = [[sg.Text('Log')],
-        [sg.StatusBar('', k='-LOG-', s=(200,1))]]
+col4 = sg.Frame('',[[sg.Text('Log')],
+        [sg.StatusBar('', k='-LOG-', s=(200,1))]])
+
 
 # layout_frame_1 = [[sg.Frame('',port)], [sg.Frame('',col1)]]
 
 # layout_frame_2 = sg.Frame('',col2), sg.Frame('',col3)
 
 
-
-
-layout = [
-        [sg.Frame('',port+col1),
-        sg.Frame('',col2),
-        sg.Frame('',col3)],
-        [sg.Frame('',col4)]
-    ]
+layout = [[col1,col3],[col4]]
 
 window = sg.Window('Test', layout,finalize=True)
 
@@ -330,14 +328,17 @@ if __name__=='__main__':
                 if run_dis:
                     try:
                         print('Testing')
-                        async_result2 = pool.apply_async(collection.PollDis,(ax, fig_agg1))
+                        module1 = collection.PollDis
                         event=''
+                        async_result2 = pool.apply_async(module1,(disp_sensor, ax, fig_agg1, controlQue))
+                        
                         run_dis = False
                         err = ''
                     except:
-                        err = 'ADC Not Open'
+                        err = 'ILD Not Open'
                 else:
                     print('Stopping')
+                    controlQue.put('stop')
                     time.sleep(0.5)
                     run_dis = True
                 fig_tool.LogDisp('-LOG-',err)
@@ -346,15 +347,17 @@ if __name__=='__main__':
             if run_vlog:
                 print('run')          
                 try:
-                    unit = control.ADC24()   
-                    async_result1 = pool.apply_async(collection.VoltLog, (bx, fig_agg2))
+                    unit = control.ADC24() 
+                    module2 = collection.VoltLog
+                    async_result1 = pool.apply_async(module2, (dbSync,unit, bx, fig_agg2, controlQue))
                     err = ''
                 except:
                     err = 'ADC24 Connection Failed'
                 event=''
                 run_vlog = False
             else:
-                print('Stop')
+                print('Stopping')
+                controlQue.put('stop')
                 run_vlog = True
                 
             fig_tool.LogDisp('-LOG-',err)
@@ -372,12 +375,15 @@ if __name__=='__main__':
                 max_ignitions = float(values['-SHOOT-'])   
                 ignition_frequency = float(values['-FREQ-'])
                 camera_delay = float(values['-CAMDELAY-'])*1e-3
+
+                module3 = collection.PSU_run
+
                 try:
-                    psu_operation = pool.apply_async(collection.PSU_run, (psu_port, Inital_voltage_limit,Inital_current_limit,Overcurrent_protection, controlQue, reportQue))
+                    psu_operation = pool.apply_async(module3, (dbSync,DC,instrument ,Inital_voltage_limit, Inital_current_limit, Overcurrent_protection, controlQue, reportQue))
                 except:
                     err += 'PSU1 not connected'
                 try:
-                    psu2_operation = pool.apply_async(collection.PSU_run, (psu2_port, 12,Inital_current_limit,Overcurrent_protection, controlQue, reportQue))
+                    psu2_operation = pool.apply_async(module3, (dbSync,DC,instrument ,Inital_voltage_limit, Inital_current_limit, Overcurrent_protection, controlQue, reportQue))
                 except:
                     err += 'PSU2 not connected'
                 async_result4 = pool.apply_async(run, (values['-VOLTS-'],camera_delay, camPin, ignPin, voltInPin))
