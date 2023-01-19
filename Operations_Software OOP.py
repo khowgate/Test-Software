@@ -4,8 +4,6 @@ from datetime import datetime
 from multiprocessing.pool import ThreadPool
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
-from PIL import Image, ImageTk
-import io
 from omnipy import control, collection, analysis, utils
 from datetime import datetime
 from multiprocessing import Process, Queue
@@ -13,6 +11,7 @@ from pyfirmata import Arduino
 
 controlQue = Queue()
 reportQue = Queue()
+stateQue = Queue()
 DC = control.DC_PSU()
 
 plt.ion()
@@ -22,124 +21,134 @@ err= {'err':0,'txt':''}
 dbKeys = open('secrets.txt', 'r')
 Lines = dbKeys.readlines()
 
-
-
 dbSync = utils.db_tools(Lines[1].strip(), Lines[0].strip(), 'Log_data')
 
-def LEDIndicator(key=None, radius=30):
-    return sg.Graph(canvas_size=(radius, radius),
-             graph_bottom_left=(-radius, -radius),
-             graph_top_right=(radius, radius),
-             pad=(0, 0), key=key)
 
-def get_img_data(f, maxsize=(800, 600), first=False):
-    """Generate image data using PIL
-    """
-    img = Image.open(f)
-    img.thumbnail(maxsize)
-    if first:                     # tkinter is inactive the first time
-        bio = io.BytesIO()
-        img.save(bio, format="PNG")
-        del img
-        return bio.getvalue()
-    return ImageTk.PhotoImage(img)
+def psuLoggingStart(port,voltage,current):
+
+    if float(values['-PSUV-']) > 12:
+        raise Exception('Supply Limit Requested exceeds soft limit (12V)')
+    psu_operation = pool.apply_async(collection.PSU_run, (dbSync,DC,port,voltage,current,1,controlQue,reportQue))
 
 
-def run(volts,camPreTrig,camPin,ignPin,voltInPin):
+def runSetup(fig_agg1):
+    print('before run def')
+    def run(Vstart, Vstop, Vstep, step, timeout):
+        camDelay = float(values['-CAMDELAY-'])*1e-3
+        pulseTime = 5e-3
+        start = time.time()
+        ignition = 0
+        while True:
+            
+            time.sleep(0.1)
+            
+            currentVolts = 5*(voltInPin.read()/2**10)*1e5
+            print((time.time()-start) > timeout,currentVolts)
+
+            if currentVolts > Vstart or (time.time()-start) > timeout:
+                    print('sequance start')
+                    
+                    camPin.write(1)
+                    time.sleep(pulseTime)
+                    camPin.write(0)
+                    print('camPulse')
+
+                    time.sleep(camDelay)
+
+                    ignPin.write(1)
+                    time.sleep(pulseTime)
+                    ignPin.write(0)
+                    print('ignPulse')
+
+                    ignition += 1
+                    try:
+                        b, bit = analysis.Raw_Data_Collection(disp_sensor,6,freqLaser, ax, cx) # Displasment Sesor Procseeing
+                        fig_agg1.draw()
+                    except:
+                        bit = 0
+                    
+                    fig_tool.LogDisp('-BIT-', bit)
+                    fig_tool.LogDisp('-LASTV-', currentVolts)
+                    fig_tool.LogDisp('-SHOTN-', ignition)
+                    fig_tool.LogDisp('-SENSORH-', 0)
+                    dbSync.db_write('Bit_test', 'test', bit)
+
+                    start = time.time()
+
+                
+                    stop = False
+                    if ignition >= step:
+                        print('stop event')
+                        errDump.write('\nStop event, user or ignition max exit\nIgnition No.'+str(ignition)+'Ignition max'+str(step)+'\n')
+                        controlQue.put('stop')
+                        stop = True
+                    if not reportQue.empty():
+                        print('stop event')
+                        statment = reportQue.get()
+
+                        psuErr += 1
+                        errDump.write(statment+'\n')
+                        if psuErr > 3:
+                            fig_tool.LogDisp('-LOG-',statment)
+                            stop = True
+                        fig_tool.LogDisp('-LOG-',statment)
+                    if not controlQue.empty():
+                        print('stop event')
+                        errDump.write('Stop event, control que break\n')
+                        if 'stop' in controlQue.get():
+                            stop = True
+                    if stop:
+                        stateQue.put('stop')
+                        break
+
+            
+            if Vstop != Vstart:
+                Vstart += Vstep
+                run(Vstart,Vstop,Vstep,step)
+
+        return   
+
+    print('after run def')    
+    err = ''
+    event = ''
     
-    fig3 = Figure(figsize=(10,4))
-    ax = fig3.add_subplot(121)
-    cx = fig3.add_subplot(122)
-    
-    ax.set_xlabel('Time (s)')
-    ax.set_ylabel('Amplitude ($\mu$m)')
-    ax.grid(b=True, which='major', axis='y',alpha=0.5)
-    ax.grid(b=True, which='major', axis='x',alpha=0.5)
-    
-    cx.set_xlabel('frequency(Hz)')
-    cx.set_ylabel('Amplitude')
-    cx.grid(b=True, which='major', axis='y',alpha=0.5)
-    cx.grid(b=True, which='major', axis='x',alpha=0.5)
-    print('drawing figure')
 
-    fig_agg3 = fig_tool.draw_figure(canvas1, fig3)
+    if 'psu_port' in globals():
+        try:
+            psuLoggingStart(psu_port,int(values['-PSUV-']),int(values['-PSUA-'])/1000)
+        except Exception as Arguments:
+            err = Arguments
+    
+    if 'psu2_port' in globals():
+        try:
+            psuLoggingStart(psu2_port,int(values['-PSU2V-']),int(values['-PSU2A-'])/1000)
+        except Exception as Arguments:
+            err = Arguments
 
-    ign_t_id =[]
-    ignition = 0
-    step= 6
     freqLaser = 2000
-
-    pulseTime = 5e-3
-
-    start = time.time()
-    psuErr = 0
 
     errDump = open('runEventDump.txt', 'w')
     now = datetime.now()
     date_time = now.strftime("%m/%d/%Y, %H:%M:%S")
     errDump.write('\nTest Date/time'+date_time)
-    
-    while True:
+    timeout = float(values['-TIMEOUT-'])
+
+    if values['-COM5-'] == 'V-Fix':
+        Vstart = int(values['-VOLTS-'])
+        step = int(values['-SHOOT-'])
+        print(Vstart,step)
         
-        time.sleep(0.1)
-        print((time.time()-start))
-        currentVolts = 5*(voltInPin.read()/2**10)*1e5
-
-        if currentVolts > volts or (time.time()-start) > 10:
-                print('sequance start')
-                
-                camPin.write(1)
-                time.sleep(pulseTime)
-                camPin.write(0)
-                print('camPulse')
-
-                time.sleep(camPreTrig)
-
-                ignPin.write(1)
-                time.sleep(pulseTime)
-                ignPin.write(0)
-                print('ignPulse')
-
-                ignition += 1
-                try:
-                    b, bit = analysis.Raw_Data_Collection(disp_sensor,step,freqLaser, ax, cx) # Displasment Sesor Procseeing
-                    fig_agg3.draw()
-                except:
-                    bit = 0
-                
-                fig_tool.LogDisp('-BIT-', bit)
-                fig_tool.LogDisp('-LASTV-', currentVolts)
-                fig_tool.LogDisp('-SHOTN-', ignition)
-                fig_tool.LogDisp('-SENSORH-', 0)
-                dbSync.db_write('Bit_test', 'test', bit)
-
-                start = time.time()
-
-            
-        if event=='-RUN-' or ignition >= max_ignitions:
-            print('stop event')
-            errDump.write('\nStop event, user or ignition max exit\nIgnition No.'+str(ignition)+'Ignition max'+str(max_ignitions)+'\n')
-            fig_tool.delete_figure_agg(fig_agg3)
-            controlQue.put('stop')
-            break
-        if not reportQue.empty():
-            print('stop event')
-            statment = reportQue.get()
-
-            psuErr += 1
-            errDump.write(statment+'\n')
-            if psuErr > 3:
-                fig_tool.LogDisp('-LOG-',statment)
-                break
-            fig_tool.LogDisp('-LOG-',statment)
-        if not controlQue.empty():
-            print('stop event')
-            errDump.write('Stop event, control que break\n')
-            if 'stop' in controlQue.get():
-                break
+        async_result4 = pool.apply_async(run, (Vstart,Vstart,100,step,timeout))
+    elif values['-COM5-'] == 'V-Sweep':
+        Vstart = int(values['-SWP_STRT-'])
+        Vstop = int(values['SWP_STOP-'])
+        Vstep = int(values['SWP_STEP-'])
+        step = int(values['-SWP_SHOT-'])
+        async_result4 = pool.apply_async(run, (Vstart,Vstop,Vstart,step,timeout))
+    else:
+        raise Exception('Mode value not recognised')
 
 
-    return   
 
 
 instruments = DC.list_available()
@@ -164,21 +173,21 @@ freqLaser=2000
 
 
 
-image_elem = sg.Image(data=get_img_data('2.4.0002.JPG', first=True))
+image_elem = sg.Image(data=utils.get_img_data('2.4.0002.JPG', first=True))
 
 modes = [1500]
 col1 = sg.Col([
         [sg.Frame('',[[sg.Text('Toggle ADC24'),sg.Button(button_text ='Toggle',size=(15,1),key='-VLOG_EN-')],
         [sg.Text('Arduino COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM-',enable_events=True)],
-        [sg.Button(button_text ='Connect',size=(15,1),key='-ARDUINO_CON-'),  LEDIndicator('-ARDUINO_STATUS-')],
+        [sg.Button(button_text ='Connect',size=(15,1),key='-ARDUINO_CON-'),  utils.LEDIndicator('-ARDUINO_STATUS-')],
         [sg.Text('ILD1420 COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM2-',enable_events=True)],
-        [sg.Button(button_text ='Connect',size=(15,1),key='-SENS_CON-'),  LEDIndicator('-SENS_STATUS-'), sg.Button(button_text ='Test',size=(15,1),key='-DIS_TEST-')],
+        [sg.Button(button_text ='Connect',size=(15,1),key='-SENS_CON-'),  utils.LEDIndicator('-SENS_STATUS-'), sg.Button(button_text ='Test',size=(15,1),key='-DIS_TEST-')],
         [sg.Text('PSU COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM3-',enable_events=True)],
-        [sg.Button(button_text ='Connect',size=(15,1),key='-PSU_CON-'),  LEDIndicator('-PSU_STATUS-')],
+        [sg.Button(button_text ='Connect',size=(15,1),key='-PSU_CON-'),  utils.LEDIndicator('-PSU_STATUS-')],
         [sg.Text('PSU2 COM Port'), sg.Combo(COM_PORTS,size=(15,22), key='-COM4-',enable_events=True)],
-        [sg.Button(button_text ='Connect',size=(15,1),key='-PSU2_CON-'),  LEDIndicator('-PSU2_STATUS-')]])],
+        [sg.Button(button_text ='Connect',size=(15,1),key='-PSU2_CON-'),  utils.LEDIndicator('-PSU2_STATUS-')]])],
         [sg.Text('Operation Mode'), sg.Combo(['V-Fix','V-Sweep'],size=(15,22), key='-COM5-')],
-        [sg.Text('Camera Pre-Trigger (ms)'), sg.Input(default_text='50',size=(15,22), key='-CAMDELAY-',enable_events=True)],
+        [sg.Text('Camera Pre-Trigger (ms)'), sg.Input(default_text='200',size=(15,22), key='-CAMDELAY-')],
          
         [sg.TabGroup([[sg.Tab('V-Fix',[[sg.Text('Voltage Selection'), sg.Combo(voltages,default_value= 1500,size=(15,22), key='-VOLTS-',enable_events=True)],
                                     [sg.Text('Target Shot No.'), sg.Spin(potential_shots,size=(15,22), key='-SHOOT-',enable_events=True)],
@@ -192,6 +201,7 @@ col1 = sg.Col([
                     [sg.Tab('Ignitor',[[sg.Text('Fixed Voltage Output (V)'), sg.Input(default_text='12',size=(15,22), key='-PSU2V-',enable_events=True)],
                                     [sg.Text('Fixed Current Limit (mA)'), sg.Input(default_text='50',size=(15,22), key='-PSU2A-',enable_events=True)],
                                     [sg.Text('Power Supply Overide Control'),sg.Button(button_text ='Test',size=(15,1),key='-PSU2SET-')],
+                                    [sg.Text('Ignitor Timeout'), sg.Input(default_text='10',size=(15,22), key='-TIMEOUT-')],
                                     [sg.Text('Ignition Freq (not supported)'), sg.Spin(potential_freq,size=(15,22), key='-FREQ-',enable_events=True)]])]])],
          
          
@@ -362,35 +372,37 @@ if __name__=='__main__':
                 
             fig_tool.LogDisp('-LOG-',err)
                 
-        if event=='-RUN-':
-            if run_log:
-                err = ''
-                event = ''
+        if event=='-RUN-' or not stateQue.empty():
+            if not stateQue.empty():
+                stateQue.get()
                 run_log = False
-                fig_tool.delete_figure_agg(fig_agg1)    
-                Inital_voltage_limit = int(values['-PSUV-'])
-                Inital_current_limit = int(values['-PSUA-'])/1000
-                Overcurrent_protection = 1
-                print(values['-SHOOT-']  ,values['-FREQ-'],values['-CAMDELAY-'])
-                max_ignitions = float(values['-SHOOT-'])   
-                ignition_frequency = float(values['-FREQ-'])
-                camera_delay = float(values['-CAMDELAY-'])*1e-3
 
-                module3 = collection.PSU_run
+            fig_tool.delete_figure_agg(fig_agg1)
+            if run_log:
+                run_log = False
+                fig3 = Figure(figsize=(10,4))
+                ax = fig3.add_subplot(121)
+                cx = fig3.add_subplot(122)
+                
+                ax.set_xlabel('Time (s)')
+                ax.set_ylabel('Amplitude ($\mu$m)')
+                ax.grid(b=True, which='major', axis='y',alpha=0.5)
+                ax.grid(b=True, which='major', axis='x',alpha=0.5)
+                
+                cx.set_xlabel('frequency(Hz)')
+                cx.set_ylabel('Amplitude')
+                cx.grid(b=True, which='major', axis='y',alpha=0.5)
+                cx.grid(b=True, which='major', axis='x',alpha=0.5)
+                print('drawing figure')
 
-                try:
-                    psu_operation = pool.apply_async(module3, (dbSync,DC,instrument ,Inital_voltage_limit, Inital_current_limit, Overcurrent_protection, controlQue, reportQue))
-                except:
-                    err += 'PSU1 not connected'
-                try:
-                    psu2_operation = pool.apply_async(module3, (dbSync,DC,instrument ,Inital_voltage_limit, Inital_current_limit, Overcurrent_protection, controlQue, reportQue))
-                except:
-                    err += 'PSU2 not connected'
-                async_result4 = pool.apply_async(run, (values['-VOLTS-'],camera_delay, camPin, ignPin, voltInPin))
+                fig_agg1 = fig_tool.draw_figure(canvas1, fig3)
+                runSetup(fig_agg1)
             else:
                 run_log = True
+                controlQue.put(['stop']*4)
                 fig_agg1 = fig_tool.draw_figure(canvas1, fig1)
-            fig_tool.LogDisp('-LOG-',err)     
+                
+            fig_tool.LogDisp('-LOG-',err)  
         
         if event=='-PSUSET-':
             print(values['-PSUV-'],(int(values['-PSUA-'])/1000))
@@ -403,10 +415,7 @@ if __name__=='__main__':
             
         if event == "Exit" or event == sg.WIN_CLOSED:
             print('close')
-            controlQue.put('stop')
-            controlQue.put('stop')
-            controlQue.put('stop')
-            controlQue.put('stop')
+            controlQue.put(['stop']*4)
             try:
                 disp_sensor.close()
             except:

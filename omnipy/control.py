@@ -69,7 +69,7 @@ class DC_PSU:
     
     def __init__(self):
         self.rm = pyvisa.ResourceManager()
-        self.state = {b'S\n':'On',b's\n':'On', b'\x12\n':'Off'
+        self.state = {b'S\n':'On',b's\n':'On',b'r/n':'On', b'\x12\n':'Off'
                       , b'2\n':'Off'}
         self.OUT = True
     

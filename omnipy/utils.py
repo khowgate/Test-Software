@@ -1,10 +1,31 @@
+import PySimpleGUI as sg
+from PIL import Image, ImageTk
+import io
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
-from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client import Point
 import matplotlib.pyplot as plt
-import influxdb_client, os, time
+import influxdb_client
 from influxdb_client.client.write_api import SYNCHRONOUS
 from datetime import datetime
+
+
+def LEDIndicator(key=None, radius=30):
+    return sg.Graph(canvas_size=(radius, radius),
+             graph_bottom_left=(-radius, -radius),
+             graph_top_right=(radius, radius),
+             pad=(0, 0), key=key)
+
+def get_img_data(f, maxsize=(800, 600), first=False):
+    """Generate image data using PIL
+    """
+    img = Image.open(f)
+    img.thumbnail(maxsize)
+    if first:                     # tkinter is inactive the first time
+        bio = io.BytesIO()
+        img.save(bio, format="PNG")
+        del img
+        return bio.getvalue()
+    return ImageTk.PhotoImage(img)
 
 class figure_tools:
     def __init__(self, window):
